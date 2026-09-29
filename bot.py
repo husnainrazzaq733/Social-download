@@ -76,6 +76,39 @@ async def download_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 await status_msg.delete()
                 return
 
+        if 'youtube.com' in url or 'youtu.be' in url:
+            # Extract video ID
+            video_id = None
+            if 'youtu.be/' in url:
+                video_id = url.split('youtu.be/')[1].split('?')[0]
+            elif 'v=' in url:
+                video_id = url.split('v=')[1].split('&')[0]
+            elif '/shorts/' in url:
+                video_id = url.split('/shorts/')[1].split('?')[0]
+
+            if video_id:
+                yt_host = 'youtube-media-downloader.p.rapidapi.com'
+                yt_headers = {'x-rapidapi-host': yt_host, 'x-rapidapi-key': RAPIDAPI_KEY}
+                res = requests.get(f'https://{yt_host}/v2/video/details', params={'videoId': video_id}, headers=yt_headers)
+                if res.status_code == 200:
+                    data = res.json()
+                    videos = data.get('videos', {}).get('items', [])
+                    # Try to find a video that has audio
+                    video_url = None
+                    for v in videos:
+                        if v.get('hasAudio'):
+                            video_url = v.get('url')
+                            break
+                    
+                    if not video_url and videos:
+                        video_url = videos[0].get('url') # fallback to first video
+
+                    if video_url:
+                        await status_msg.edit_text('Uploading YouTube Video...')
+                        await context.bot.send_video(chat_id=chat_id, video=video_url)
+                        await status_msg.delete()
+                        return
+
         ydl_opts = {
             'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
             'outtmpl': f'downloads/{chat_id}_%(id)s.%(ext)s',
