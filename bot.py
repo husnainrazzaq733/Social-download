@@ -67,17 +67,28 @@ async def download_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         if 'instagram.com' in url:
             media_items = download_instagram_rapidapi(url)
             if media_items:
-                await status_msg.edit_text('Uploading Instagram Media...')
-                for m_url, m_type in media_items:
-                    if m_type == 'video':
-                        await context.bot.send_video(chat_id=chat_id, video=m_url)
-                    else:
-                        await context.bot.send_photo(chat_id=chat_id, photo=m_url)
+                os.makedirs('downloads', exist_ok=True)
+                for i, (m_url, m_type) in enumerate(media_items):
+                    await status_msg.edit_text(f'Downloading Instagram Media {i+1}...')
+                    temp_file = f'downloads/insta_{chat_id}_{i}.{"mp4" if m_type == "video" else "jpg"}'
+                    
+                    with requests.get(m_url, stream=True) as r:
+                        r.raise_for_status()
+                        with open(temp_file, 'wb') as f:
+                            for chunk in r.iter_content(chunk_size=8192):
+                                f.write(chunk)
+                    
+                    await status_msg.edit_text(f'Uploading Instagram Media {i+1}...')
+                    with open(temp_file, 'rb') as f:
+                        if m_type == 'video':
+                            await context.bot.send_video(chat_id=chat_id, video=f)
+                        else:
+                            await context.bot.send_photo(chat_id=chat_id, photo=f)
+                    os.remove(temp_file)
                 await status_msg.delete()
                 return
 
         if 'youtube.com' in url or 'youtu.be' in url:
-            # Extract video ID
             video_id = None
             if 'youtu.be/' in url:
                 video_id = url.split('youtu.be/')[1].split('?')[0]
@@ -93,19 +104,28 @@ async def download_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 if res.status_code == 200:
                     data = res.json()
                     videos = data.get('videos', {}).get('items', [])
-                    # Try to find a video that has audio
                     video_url = None
                     for v in videos:
                         if v.get('hasAudio'):
                             video_url = v.get('url')
                             break
-                    
                     if not video_url and videos:
-                        video_url = videos[0].get('url') # fallback to first video
+                        video_url = videos[0].get('url')
 
                     if video_url:
-                        await status_msg.edit_text('Uploading YouTube Video...')
-                        await context.bot.send_video(chat_id=chat_id, video=video_url)
+                        await status_msg.edit_text('Downloading YouTube Video...')
+                        os.makedirs('downloads', exist_ok=True)
+                        temp_file = f'downloads/yt_{chat_id}.mp4'
+                        with requests.get(video_url, stream=True) as r:
+                            r.raise_for_status()
+                            with open(temp_file, 'wb') as f:
+                                for chunk in r.iter_content(chunk_size=8192):
+                                    f.write(chunk)
+                        
+                        await status_msg.edit_text('Uploading YouTube Video to Telegram...')
+                        with open(temp_file, 'rb') as f:
+                            await context.bot.send_video(chat_id=chat_id, video=f)
+                        os.remove(temp_file)
                         await status_msg.delete()
                         return
 
